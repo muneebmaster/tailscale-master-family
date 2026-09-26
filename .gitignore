@@ -1,0 +1,36 @@
+# ---- Local-only working files (never published) ----
+spec.md
+presentation/
+
+# ---- Terraform ----
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*authkey*
+*api-key*
+*apikey*
+*api_key*
+
+# ---- Tooling / OS ----
+node_modules/
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
