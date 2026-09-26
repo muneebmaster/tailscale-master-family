@@ -14,7 +14,7 @@ The customer is my family: a few laptops and phones that leave the house every d
 |---|---|---|
 | 1 | Print to the home Canon printer from work, school, or cellular without port forwarding or printer software | Subnet router exposes `192.168.0.250` to authorized tailnet members; ACL limits access to print ports |
 | 2 | Emergency admin access to the Pi-hole DNS server without managing SSH keys or exposing port 22 | Tailscale SSH on the Pi-hole node with `check` mode (identity plus periodic browser re-auth) |
-| 3 | Remote access to Synology NAS files and media without port forwarding | Subnet route to `192.168.0.252`; ACL allows SMB and DSM ports only |
+| 3 | Remote access to Synology NAS files and media without port forwarding | Subnet route to `192.168.0.252`; ACL allows only the NAS services the family uses (SMB, DSM, WebDAV, Web Station) |
 | 4 | Ad and tracker blocking for phones and laptops away from home | Tailnet global DNS points to Pi-hole with "Override local DNS" enabled; MagicDNS on |
 | 5 | (Stretch) Private access to OpenWebUI on the NAS, backed by OpenRouter | Docker Compose stack on the NAS, reachable only via the subnet route |
 
@@ -78,7 +78,7 @@ flowchart LR
 | `group:admins` | Entire home LAN, both Pis | All |
 | `group:admins` | `tag:dns` via Tailscale SSH | SSH as `root` or any non-root user, `check` mode |
 | `group:family` | Printer `192.168.0.250` | TCP 631 (IPP), 9100 (RAW), 515 (LPD) |
-| `group:family` | NAS `192.168.0.252` | TCP 445 (SMB), 5000/5001 (DSM), 3000 (OpenWebUI) |
+| `group:family` | NAS `192.168.0.252` | TCP 445 (SMB), 5000/5001 (DSM, File Station), 5005 (WebDAV), 80/443 (Web Station, reverse proxy), 3000 (OpenWebUI) |
 | Every member | Pi-hole (tailnet and LAN address) | 53 TCP/UDP |
 | Every member | Their own devices | All |
 
@@ -225,6 +225,7 @@ All tests run from a laptop on a phone hotspot, off the home network. Testing fr
 
 - **Subnet router vs Tailscale on the NAS.** The printer cannot run a client, so a subnet router is needed anyway. Routing the NAS through it keeps one pattern and leaves DSM untouched. The cost is coarser identity: the NAS sees every remote user as `192.168.0.253`. Running Tailscale on the NAS would give per-device identity and is listed under future work.
 - **Tailscale IP vs LAN IP for global DNS.** The default is Pi-hole's own tailnet address (`dns_nameserver_mode = "tailscale"`); the LAN address `192.168.0.254` is supported with `"lan"`. The tailnet address is a direct WireGuard peer, so DNS does not also depend on the subnet router. It never collides with hotel, school or office networks that also use `192.168.0.0/24`. It also works on Linux clients that have not enabled `--accept-routes`.
+- **Tailnet DNS on the subnet router (`ACCEPT_DNS=true`).** The router Pi uses tailnet DNS like every other device, so it resolves through Pi-hole and MagicDNS names work on it. The alternative (`false`) would keep it resolving if Pi-hole failed, but the out-of-band rescue path is Tailscale SSH on the Pi-hole node itself, which does not depend on the router's resolver. The Pi-hole node is the one that must not use tailnet DNS, and it runs with `--accept-dns=false`.
 - **`check` vs `accept` for SSH.** `check` adds a browser re-authentication every 12 hours. For a node that controls household DNS, the small friction is worth the protection against a stolen, unlocked laptop.
 - **SNAT on vs off.** Left on (the Linux default). Endpoints see traffic from the router's LAN IP, so no return route is needed on the ISP router, at the cost of losing the original tailnet source address in NAS and printer logs.
 - **`acls` vs `grants`.** The policy uses the established `acls` syntax, which maps one to one to the table above. `grants` is the newer, more expressive model and is listed as future work.
