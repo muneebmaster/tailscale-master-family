@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (ignored by Git) and fill in real identities.
+admin_emails  = ["admin@example.com"]
+family_emails = ["family.member@example.com"]
+
+lan_cidr             = "192.168.0.0/24"
+subnet_router_lan_ip = "192.168.0.253"
+pihole_lan_ip        = "192.168.0.254"
+nas_ip               = "192.168.0.252"
+printer_ip           = "192.168.0.250"
+
+dns_nameserver_mode = "tailscale" # or "lan"
+bootstrap_complete  = false       # set to true after both Pis join (stage 2)

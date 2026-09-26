@@ -1,0 +1,96 @@
+// Tailscale policy for the Master household tailnet.
+//
+// This file is rendered by Terraform so that personal identities stay out of
+// version control. Values in placeholders come from terraform.tfvars.
+{
+	// Identities
+	"groups": {
+		"group:admins": ${admins},
+		"group:family": ${family},
+	},
+
+	// Only admins may apply infrastructure tags to devices.
+	"tagOwners": {
+		"tag:subnet-router": ["group:admins"],
+		"tag:dns":           ["group:admins"],
+	},
+
+	// Friendly names for LAN endpoints reached through the subnet router.
+	"hosts": {
+		"home-lan":   "${lan_cidr}",
+		"printer":    "${printer_ip}",
+		"nas":        "${nas_ip}",
+		"pihole-lan": "${pihole_lan_ip}",
+	},
+
+	// Routes advertised by a tag:subnet-router node are approved automatically.
+	"autoApprovers": {
+		"routes": {
+			"${lan_cidr}": ["tag:subnet-router"],
+		},
+	},
+
+	"acls": [
+		// Admins: full access to the home LAN and the infrastructure nodes.
+		{
+			"action": "accept",
+			"src":    ["group:admins"],
+			"dst":    ["home-lan:*", "tag:subnet-router:*", "tag:dns:*"],
+		},
+
+		// Every member can reach their own devices.
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self:*"],
+		},
+
+		// Family: printing (IPP 631, RAW/JetDirect 9100, LPD 515).
+		{
+			"action": "accept",
+			"src":    ["group:family"],
+			"proto":  "tcp",
+			"dst":    ["printer:631,9100,515"],
+		},
+
+		// Family: NAS file shares (SMB 445), DSM portal (5000/5001), OpenWebUI (3000).
+		{
+			"action": "accept",
+			"src":    ["group:family"],
+			"proto":  "tcp",
+			"dst":    ["nas:445,5000,5001,3000"],
+		},
+
+		// Every member: DNS to Pi-hole over TCP and UDP, on its tailnet and LAN addresses.
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:dns:53", "pihole-lan:53"],
+		},
+	],
+
+	// Keyless, identity-based SSH into the Pi-hole node for admins only.
+	// check mode requires a fresh browser re-authentication every checkPeriod.
+	"ssh": [
+		{
+			"action":      "check",
+			"src":         ["group:admins"],
+			"dst":         ["tag:dns"],
+			"users":       ["root", "autogroup:nonroot"],
+			"checkPeriod": "${ssh_check_period}",
+		},
+	],
+
+	// Policy tests: the control plane rejects any change that breaks these.
+	"tests": [
+		{
+			"src":    "${test_member}",
+			"accept": ["${printer_ip}:631", "${nas_ip}:445", "${pihole_lan_ip}:53"],
+			"deny":   ["${pihole_lan_ip}:22", "${nas_ip}:22"],
+		},
+		{
+			"src":    "${test_admin}",
+			"accept": ["${pihole_lan_ip}:22", "${nas_ip}:5001"],
+		},
+	],
+}
