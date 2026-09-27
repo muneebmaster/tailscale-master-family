@@ -1,9 +1,10 @@
 # OpenWebUI on the Synology DS918+, using OpenRouter as an OpenAI-compatible backend.
 # Reachable only on the home LAN and, via the subnet router, by authorized tailnet members.
 #
-# Deploy with Synology Container Manager (Project) or:
-#   cd /volume1/docker/open-webui && docker compose up -d
-name: open-webui
+# The project name comes from the folder name (open-webui). Deploy with
+# Synology Container Manager (DSM 7.2+, Project) or over SSH:
+#   cd /volume1/docker/open-webui && sudo docker-compose up -d   # DSM 7.1 Docker package (Compose v1)
+#   cd /volume1/docker/open-webui && sudo docker compose up -d   # Compose v2
 
 services:
   open-webui:
