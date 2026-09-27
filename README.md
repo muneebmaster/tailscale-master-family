@@ -4,7 +4,7 @@ Family remote access with a Tailscale subnet router, Tailscale SSH, and tailnet-
 
 ## Tailnet used for this exercise
 
-`<tailnet-name>.ts.net`
+`tail3eb5b2.ts.net`
 
 ## The customer and the problem
 
@@ -26,42 +26,78 @@ The customer is my family: a few laptops and phones that leave the house every d
   - The node is reached by its tailnet address over WireGuard, not through the subnet route, so it works even if the router Pi is down.
   - Tailnet hostnames such as `rpi-pihole` are answered locally by the client's MagicDNS resolver, not by Pi-hole, so `tailscale ssh root@rpi-pihole` still resolves while Pi-hole is broken.
   - The Pi-hole node runs with `--accept-dns=false`, so its own upstream lookups never loop back through the tailnet.
+- **DNS on Pi-hole's Tailscale address.** Tailnet DNS points at Pi-hole's Tailscale address rather than its LAN address, so DNS still works on networks that also use 192.168.0.x and does not depend on the subnet router.
 - **Infrastructure as code.** Groups, tags, ACLs, SSH rules, route auto-approval and DNS all live in Terraform. Policy tests in the tailnet policy make the control plane reject any future change that breaks expected access.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph remote["Off-site: work, school, cellular"]
-        laptop["Family laptop<br/>Tailscale client"]
-        phone["Family phone<br/>Tailscale client"]
+flowchart TB
+    %% Styling & Theme Directives
+    classDef control fill:#1e1e2e,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4
+    classDef remote fill:#181825,stroke:#a6e3a1,stroke-width:2px,color:#cdd6f4
+    classDef tailnetNode fill:#313244,stroke:#f9e2af,stroke-width:2px,color:#cdd6f4
+    classDef lanDevice fill:#181825,stroke:#f38ba8,stroke-width:2px,color:#cdd6f4
+    classDef cloud fill:#1e1e2e,stroke:#cba6f7,stroke-width:2px,color:#cdd6f4
+
+    subgraph ControlPlane["Tailscale Control Plane (SaaS / Auth)"]
+        control["Tailscale Coordination Server<br/><i>Policy (HuJSON), MagicDNS, Keys</i><br/><code>Managed via Terraform</code>"]:::control
     end
 
-    control["Tailscale control plane<br/>policy, keys, DNS config<br/>managed by Terraform"]
-
-    subgraph home["Home LAN 192.168.0.0/24 (no port forwards)"]
-        router["RPi 3B #1 192.168.0.253<br/>tag:subnet-router<br/>advertises 192.168.0.0/24"]
-        pihole["RPi 3B #2 192.168.0.254<br/>tag:dns, Pi-hole + DHCP<br/>Tailscale SSH"]
-        nas["Synology DS918+ 192.168.0.252<br/>SMB, DSM, OpenWebUI"]
-        printer["Canon printer 192.168.0.250<br/>IPP 631, LPD 515"]
+    subgraph OffSite["Off-Site Clients (Cellular / Remote Wi-Fi)"]
+        direction LR
+        laptop["Family Laptop<br/><code>Tailscale Client</code>"]:::remote
+        phone["Family Phone<br/><code>Tailscale Client</code>"]:::remote
     end
 
-    openrouter["OpenRouter API"]
+    subgraph HomeLAN["Home LAN (192.168.0.0/24 - No Open Public Ports)"]
+        direction TB
+        
+        subgraph SubnetRouterNode["Subnet Gateway Node"]
+            router["<b>RPi 3B #1</b> (192.168.0.253)<br/><code>tag:subnet-router</code> | <code>rpi-subnet-router</code><br/>Advertises 192.168.0.0/24"]:::tailnetNode
+        end
 
-    laptop -. "coordination" .-> control
-    phone -. "coordination" .-> control
-    router -. "coordination" .-> control
-    pihole -. "coordination" .-> control
+        subgraph DNSNode["DNS & Out-of-Band Admin Node"]
+            pihole["<b>RPi 3B #2</b> (192.168.0.254)<br/><code>tag:dns</code> | <code>rpi-pihole</code><br/>Pi-hole DNS + Tailscale SSH Target"]:::tailnetNode
+        end
 
-    laptop == "WireGuard" ==> router
-    phone == "WireGuard" ==> router
-    laptop == "DNS over WireGuard" ==> pihole
-    phone == "DNS over WireGuard" ==> pihole
-    laptop == "Tailscale SSH (admins)" ==> pihole
+        subgraph UnmanagedDevices["Unmanaged LAN Endpoints (No Tailscale Client)"]
+            nas["<b>Synology DS918+ NAS</b> (192.168.0.252)<br/><i>SMB (445), DSM (5000/5001), Web Station (80/443)<br/>OpenWebUI Docker (3000)</i>"]:::lanDevice
+            printer["<b>Canon Printer</b> (192.168.0.250)<br/><i>IPP (631), LPD (515)</i>"]:::lanDevice
+        end
+    end
 
-    router -- "SNAT" --> printer
-    router -- "SNAT" --> nas
-    nas -- "HTTPS" --> openrouter
+    subgraph ExternalServices["External Cloud Workloads"]
+        openrouter["OpenRouter API"]:::cloud
+    end
+
+    %% Key Connections & Data Paths
+    laptop -. "1. Key Exchange / Auth" .-> control
+    phone -. "1. Key Exchange / Auth" .-> control
+    router -. "1. Key Exchange / Auth" .-> control
+    pihole -. "1. Key Exchange / Auth" .-> control
+
+    laptop == "2a. WireGuard Subnet Tunnel" ==> router
+    phone == "2a. WireGuard Subnet Tunnel" ==> router
+    
+    laptop == "2b. DNS over WireGuard (100.71.38.104)" ==> pihole
+    phone == "2b. DNS over WireGuard (100.71.38.104)" ==> pihole
+
+    laptop == "2c. Keyless Tailscale SSH (Admins Only)" ==> pihole
+
+    router -- "3a. SNAT / LAN Forwarding" --> nas
+    router -- "3b. SNAT / LAN Forwarding" --> printer
+
+    nas -- "HTTPS (Port 443)" --> openrouter
+
+    %% Subgraph Styling
+    style ControlPlane fill:#11111b,stroke:#89b4fa,stroke-width:1px
+    style OffSite fill:#11111b,stroke:#a6e3a1,stroke-width:1px
+    style HomeLAN fill:#11111b,stroke:#f38ba8,stroke-width:1px
+    style SubnetRouterNode fill:#1e1e2e,stroke:#f9e2af,stroke-width:1px
+    style DNSNode fill:#1e1e2e,stroke:#f9e2af,stroke-width:1px
+    style UnmanagedDevices fill:#11111b,stroke:#f38ba8,stroke-dasharray: 5 5
+    style ExternalServices fill:#11111b,stroke:#cba6f7,stroke-width:1px
 ```
 
 | Device | LAN IP | Runs Tailscale? | Role | Tailscale identity |
@@ -161,7 +197,7 @@ terraform -chdir=terraform output -raw pihole_auth_key          # copy, then pas
 ssh -t <user>@192.168.0.254 'sudo bash ~/setup_pihole_ssh_node.sh'
 ```
 
-The scripts are idempotent and read the key from `TS_AUTHKEY` or a hidden prompt, so it never touches disk. Keys are single-use and expire after one hour.
+The scripts are idempotent and read the key from `TS_AUTHKEY` or a hidden prompt, so it never touches disk. Keys are single-use and expire one hour after the stage 1 apply. If a key expires, regenerate a replacement with `terraform -chdir=terraform apply -replace=tailscale_tailnet_key.<name>`.
 
 ### Stage 2: route pinning and DNS
 
@@ -178,67 +214,47 @@ terraform -chdir=terraform output pihole_tailscale_ipv4 global_nameserver
 ```bash
 # On the NAS, in /volume1/docker/open-webui
 cp .env.example .env   # set OPENROUTER_API_KEY and WEBUI_SECRET_KEY (openssl rand -hex 32)
-docker compose up -d
+sudo docker-compose up -d   # DSM 7.1 Docker package; on DSM 7.2+ use "docker compose"
 ```
 
-Or import `docker-compose.yml` as a Project in Synology Container Manager.
+On DSM 7.2 and later you can instead import `docker-compose.yml` as a Project in Container Manager.
 
 - If the DSM firewall is enabled, allow the subnet router's LAN IP `192.168.0.253`. Linux subnet routers SNAT by default, so remote traffic arrives at the NAS and printer from `.253`. This also means no static return route is needed on the ISP router.
-- After creating the first admin account in OpenWebUI, set `ENABLE_SIGNUP=false` and redeploy.
+- The first account created in OpenWebUI becomes the admin. After that, turn off **New Sign Ups** in Admin Panel, Settings, Authentication. `ENABLE_SIGNUP` in `.env` only applies on the first start; after that the setting is stored in OpenWebUI's database.
 
 ## Verification
 
-All tests run from a laptop on a phone hotspot, off the home network. Testing from inside the LAN proves nothing.
+Tests were run from a MacBook tethered to an Android phone hotspot (`10.175.227.167`, cellular), off the home network, signed in as an admin. Testing from inside the LAN proves nothing. The Mac's route to `192.168.0.250` was confirmed to go through the Tailscale interface (`utun4`).
 
 | Test | Command | Expected | Result |
 |---|---|---|---|
-| Router reachable | `tailscale ping rpi-subnet-router` | pong | _pending_ |
-| Printer port | `nc -vz 192.168.0.250 631` | succeeded | _pending_ |
-| NAS SMB | `nc -vz 192.168.0.252 445` | succeeded | _pending_ |
-| NAS DSM | `curl -skI https://192.168.0.252:5001` | HTTP response | _pending_ |
-| OpenWebUI | `curl -sI http://192.168.0.252:3000` | HTTP 200 | _pending_ |
-| DNS resolution | `dig @<pihole-100.x> example.com +short` | an IP | _pending_ |
-| Ad blocking | `dig doubleclick.net +short` | `0.0.0.0` or empty | _pending_ |
-| Pi-hole log | Pi-hole query log | queries from 100.x clients | _pending_ |
-| Tailscale SSH | `tailscale ssh root@rpi-pihole` | browser check, then shell, no keys | _pending_ |
-| Out-of-band admin | `sudo systemctl restart pihole-FTL` in that session | service restarts | _pending_ |
-| Negative test | family account: SSH, or `nc -vz 192.168.0.252 22` | denied | _pending_ |
-| Remote print | Add printer by IP (`192.168.0.250`, IPP), print test page | page prints | _pending_ |
+| Router reachable | `tailscale ping rpi-subnet-router` | pong | ✅ pong via DERP (Toronto), 510 ms |
+| Pi-hole node reachable | `tailscale ping rpi-pihole` | pong | ✅ pong via DERP (Toronto), 283 ms |
+| Printer IPP | `nc -vz 192.168.0.250 631` | succeeded | ✅ |
+| NAS SMB | `nc -vz 192.168.0.252 445` | succeeded | ✅ |
+| NAS DSM | `curl -skI https://192.168.0.252:5001` | HTTP response | ✅ HTTP 200 |
+| NAS HTTPS (Web Station) | `nc -vz 192.168.0.252 443` | succeeded | ✅ |
+| OpenWebUI | `http://192.168.0.252:3000` in a browser, send a chat message | reply from an OpenRouter model | ✅ logged in and got a reply (Qwen via OpenRouter); sign ups disabled |
+| DNS resolution | `dig @100.71.38.104 example.com +short` | an IP | ✅ `104.20.23.154` |
+| Ad blocking | system resolver lookup of `doubleclick.net` | `0.0.0.0` or empty | ✅ `0.0.0.0` |
+| MagicDNS | system resolver lookup of `rpi-pihole` | tailnet IP | ✅ `100.71.38.104` |
+| Pi-hole log | Pi-hole query log | queries from 100.x clients | ✅ queries from the Mac's tailnet IP |
+| Tailscale SSH | `tailscale ssh pi@rpi-pihole` | browser check, then shell, no keys | ✅ |
+| Out-of-band admin | `sudo systemctl restart pihole-FTL` in that session | service restarts | ✅ |
+| Route auto-approval | admin console, router Subnets | approved with no manual click | ✅ `192.168.0.0/24` advertised and enabled |
+| Least privilege | policy `tests` block | family denied SSH to Pi-hole and NAS | ✅ enforced by the control plane on every apply |
+| Remote print | add printer by IP (`192.168.0.250`, IPP), print test page | page prints | ✅ page printed, using Canon's macOS driver selected when adding the printer by IP (the generic driver sends a format this printer silently discards) |
 
-## Troubleshooting runbook (subnet routers)
+Observations:
 
-| Check | Command | What it proves |
-|---|---|---|
-| Node online, path type | `tailscale status`, `tailscale ping rpi-subnet-router` | Router is connected; whether the path is direct or relayed via DERP |
-| NAT and UDP | `tailscale netcheck` | NAT type, UDP reachability, nearest DERP region |
-| Forwarding on the router | `sysctl net.ipv4.ip_forward` | Must be `1`, or packets are dropped at the Pi |
-| Route advertised | `tailscale debug prefs` on the router | `AdvertiseRoutes` contains `192.168.0.0/24` |
-| Route approved | Admin console, Machines, router, Subnets | Route shows approved (auto-approved via tag) |
-| Linux clients | `tailscale set --accept-routes=true` | Linux does not accept subnet routes by default |
-| Overlapping subnets | `route get 192.168.0.250` (macOS), `ip route get 192.168.0.250` (Linux) | If the remote network is also `192.168.0.0/24`, the local route can win |
-| ACL denies | Admin console "Preview rules", policy `tests` | Whether the user is allowed to that host and port |
-| Endpoint firewall | DSM firewall, printer "local subnet only" settings | SNAT presents traffic as `192.168.0.253`; allow it |
-| DNS | `dig @<pihole-100.x> example.com` | If it times out, check Pi-hole listening mode; confirm "Override local DNS" is on |
-| Printer discovery | n/a | Bonjour/mDNS does not traverse the subnet route; add the printer manually by IP using IPP |
-
-## Design trade-offs
-
-- **Subnet router vs Tailscale on the NAS.** The printer cannot run a client, so a subnet router is needed anyway. Routing the NAS through it keeps one pattern and leaves DSM untouched. The cost is coarser identity: the NAS sees every remote user as `192.168.0.253`. Running Tailscale on the NAS would give per-device identity and is listed under future work.
-- **Tailscale IP vs LAN IP for global DNS.** The default is Pi-hole's own tailnet address (`dns_nameserver_mode = "tailscale"`); the LAN address `192.168.0.254` is supported with `"lan"`. The tailnet address is a direct WireGuard peer, so DNS does not also depend on the subnet router. It never collides with hotel, school or office networks that also use `192.168.0.0/24`. It also works on Linux clients that have not enabled `--accept-routes`.
-- **Tailnet DNS on the subnet router (`ACCEPT_DNS=true`).** The router Pi uses tailnet DNS like every other device, so it resolves through Pi-hole and MagicDNS names work on it. The alternative (`false`) would keep it resolving if Pi-hole failed, but the out-of-band rescue path is Tailscale SSH on the Pi-hole node itself, which does not depend on the router's resolver. The Pi-hole node is the one that must not use tailnet DNS, and it runs with `--accept-dns=false`.
-- **`check` vs `accept` for SSH.** `check` adds a browser re-authentication every 12 hours. For a node that controls household DNS, the small friction is worth the protection against a stolen, unlocked laptop.
-- **SNAT on vs off.** Left on (the Linux default). Endpoints see traffic from the router's LAN IP, so no return route is needed on the ISP router, at the cost of losing the original tailnet source address in NAS and printer logs.
-- **`acls` vs `grants`.** The policy uses the established `acls` syntax, which maps one to one to the table above. `grants` is the newer, more expressive model and is listed as future work.
-- **API token vs OAuth client.** An admin API access token inherits tag ownership, so it can mint tagged auth keys on the first apply without a bootstrap problem. A scoped OAuth client driven from CI is the better long-term answer.
+- **Relayed, not direct, on cellular.** Tailscale normally connects devices directly to each other. The mobile carrier's network prevented that, so traffic went through Tailscale's relay servers (DERP) instead. It was slower (roughly 300 to 500 ms) but everything still worked, with no ports opened on the home router.
+- **Policy tests as a safety net.** While tuning the NAS and printer rules, every change was applied through Terraform and checked by the control plane against the `tests` block before it took effect.
+- **Least-privilege tuning from real data.** Port 9100 (RAW printing) and 5005 (WebDAV) were removed after testing showed nothing listens on them.
 
 ## What I would change with more time
 
-- Enable Tailnet Lock so new nodes must be signed by trusted keys held on admin devices. That way a compromised control plane or a leaked auth key alone cannot add a node. With Tailnet Lock enabled, the Terraform-issued bootstrap keys would need to be pre-signed (`tailscale lock sign`), which is a workflow change worth documenting.
-- Replace the API token with a scoped OAuth client and run `terraform plan` / `apply` from GitHub Actions (GitOps for the policy), with remote state.
-- Migrate `acls` to the newer `grants` syntax and add `sshTests`.
+- Run Tailscale directly on the NAS for per-device identity and exit-node use, and put OpenWebUI behind Tailscale Serve with HTTPS and a MagicDNS name.
+- Enable Tailnet Lock so new nodes must be signed by trusted keys held on admin devices. That way a compromised control plane or a leaked auth key alone cannot add a node.
 - High availability: a second subnet router advertising the same route for failover.
 - Renumber the home LAN to a less common range (or use 4via6) to avoid overlap with hotel and office networks.
-- AirPrint for iPhones: a CUPS/Avahi print gateway, or expose the printer as a Tailscale service so it is discoverable.
-- Run Tailscale directly on the NAS for per-device identity and exit-node use, and put OpenWebUI behind Tailscale Serve with HTTPS and a MagicDNS name.
-- Ansible or cloud-init for the Pi configuration instead of shell scripts; persist the UDP GRO setting.
 - Monitoring: Tailscale network flow logs, Pi-hole metrics, alerting when a node goes offline.
