@@ -14,7 +14,7 @@ The customer is my family: a few laptops and phones that leave the house every d
 |---|---|---|
 | 1 | Print to the home Canon printer from work, school, or cellular without port forwarding or printer software | Subnet router exposes `192.168.0.250` to authorized tailnet members; ACL limits access to print ports |
 | 2 | Emergency admin access to the Pi-hole DNS server without managing SSH keys or exposing port 22 | Tailscale SSH on the Pi-hole node with `check` mode (identity plus periodic browser re-auth) |
-| 3 | Remote access to Synology NAS files and media without port forwarding | Subnet route to `192.168.0.252`; ACL allows only the NAS services the family uses (SMB, DSM, WebDAV, Web Station) |
+| 3 | Remote access to Synology NAS files and media without port forwarding | Subnet route to `192.168.0.252`; ACL allows only the NAS services the family uses (SMB, DSM, Web Station) |
 | 4 | Ad and tracker blocking for phones and laptops away from home | Tailnet global DNS points to Pi-hole with "Override local DNS" enabled; MagicDNS on |
 | 5 | (Stretch) Private access to OpenWebUI on the NAS, backed by OpenRouter | Docker Compose stack on the NAS, reachable only via the subnet route |
 
@@ -43,7 +43,7 @@ flowchart LR
         router["RPi 3B #1 192.168.0.253<br/>tag:subnet-router<br/>advertises 192.168.0.0/24"]
         pihole["RPi 3B #2 192.168.0.254<br/>tag:dns, Pi-hole + DHCP<br/>Tailscale SSH"]
         nas["Synology DS918+ 192.168.0.252<br/>SMB, DSM, OpenWebUI"]
-        printer["Canon printer 192.168.0.250<br/>IPP 631, RAW 9100"]
+        printer["Canon printer 192.168.0.250<br/>IPP 631, LPD 515"]
     end
 
     openrouter["OpenRouter API"]
@@ -77,8 +77,8 @@ flowchart LR
 |---|---|---|
 | `group:admins` | Entire home LAN, both Pis | All |
 | `group:admins` | `tag:dns` via Tailscale SSH | SSH as `root` or any non-root user, `check` mode |
-| `group:family` | Printer `192.168.0.250` | TCP 631 (IPP), 9100 (RAW), 515 (LPD) |
-| `group:family` | NAS `192.168.0.252` | TCP 445 (SMB), 5000/5001 (DSM, File Station), 5005 (WebDAV), 80/443 (Web Station, reverse proxy), 3000 (OpenWebUI) |
+| `group:family` | Printer `192.168.0.250` | TCP 631 (IPP), 515 (LPD) |
+| `group:family` | NAS `192.168.0.252` | TCP 445 (SMB), 5000/5001 (DSM, File Station, Synology mobile apps), 80/443 (Web Station, reverse proxy), 3000 (OpenWebUI) |
 | Every member | Pi-hole (tailnet and LAN address) | 53 TCP/UDP |
 | Every member | Their own devices | All |
 

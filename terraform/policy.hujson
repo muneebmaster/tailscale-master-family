@@ -45,25 +45,24 @@
 			"dst":    ["autogroup:self:*"],
 		},
 
-		// Family: printing (IPP 631, RAW/JetDirect 9100, LPD 515).
+		// Family: printing (IPP 631, LPD 515). RAW 9100 is disabled on this printer.
 		{
 			"action": "accept",
 			"src":    ["group:family"],
 			"proto":  "tcp",
-			"dst":    ["printer:631,9100,515"],
+			"dst":    ["printer:631,515"],
 		},
 
 		// Family: NAS services the household actually uses.
 		//   445        SMB file shares
-		//   5000/5001  DSM portal and File Station (HTTP/HTTPS)
-		//   5005       WebDAV (HTTP)
+		//   5000/5001  DSM portal, File Station and Synology mobile apps (HTTP/HTTPS)
 		//   80/443     Web Station and the DSM reverse proxy
 		//   3000       OpenWebUI
 		{
 			"action": "accept",
 			"src":    ["group:family"],
 			"proto":  "tcp",
-			"dst":    ["nas:445,5000,5001,5005,80,443,3000"],
+			"dst":    ["nas:445,5000,5001,80,443,3000"],
 		},
 
 		// Every member: DNS to Pi-hole over TCP and UDP, on its tailnet and LAN addresses.
@@ -90,7 +89,7 @@
 	"tests": [
 		{
 			"src":    "${test_member}",
-			"accept": ["${printer_ip}:631", "${nas_ip}:445", "${nas_ip}:5005", "${nas_ip}:443", "${pihole_lan_ip}:53"],
+			"accept": ["${printer_ip}:631", "${nas_ip}:445", "${nas_ip}:443", "${pihole_lan_ip}:53"],
 			"deny":   ["${pihole_lan_ip}:22", "${nas_ip}:22"],
 		},
 		{
