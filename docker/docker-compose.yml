@@ -1,4 +1,4 @@
-# OpenWebUI on the Synology DS918+, using OpenRouter as an OpenAI-compatible backend.
+# Open WebUI on the Synology DS918+, using OpenRouter as an OpenAI-compatible backend.
 # Reachable only on the home LAN and, via the subnet router, by authorized tailnet members.
 #
 # The project name comes from the folder name (open-webui). Deploy with
