@@ -88,6 +88,12 @@ variable "dns_nameserver_mode" {
   }
 }
 
+variable "dns_search_domain" {
+  description = "Search domain pushed to tailnet clients so bare hostnames (e.g. \"vault\") resolve on the home LAN. Matches the DHCP domain served by Pi-hole."
+  type        = string
+  default     = "lan"
+}
+
 variable "bootstrap_complete" {
   description = "Set to true after both Raspberry Pis have joined the tailnet (stage 2)."
   type        = bool

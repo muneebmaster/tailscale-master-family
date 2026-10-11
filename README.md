@@ -246,6 +246,7 @@ Observations:
 - **Relayed, not direct, on cellular.** Tailscale normally connects devices directly to each other. The mobile carrier's network prevented that, so traffic went through Tailscale's relay servers (DERP) instead. It was slower (roughly 300 to 500 ms) but everything still worked, with no ports opened on the home router.
 - **Policy tests as a safety net.** While tuning the NAS and printer rules, every change was applied through Terraform and checked by the control plane against the `tests` block before it took effect.
 - **Least-privilege tuning from real data.** Port 9100 (RAW printing) and 5005 (WebDAV) were removed after testing showed nothing listens on them.
+- **Bare hostnames need a search domain.** Once the tailnet overrides local DNS, clients stop receiving the home network's DHCP suffix (`lan`), so a bare name like `vault` no longer resolves even though `vault.lan` does. The fix is to push `lan` as a tailnet search domain, which is now managed in Terraform (`dns_search_domain`).
 
 ## What I would change with more time
 

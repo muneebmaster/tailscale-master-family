@@ -81,6 +81,10 @@ resource "tailscale_dns_configuration" "dns" {
   magic_dns          = true
   override_local_dns = var.bootstrap_complete
 
+  # With local DNS overridden, clients no longer get the home DHCP suffix, so
+  # push it as a search domain: "vault" then resolves as "vault.lan".
+  search_paths = [var.dns_search_domain]
+
   dynamic "nameservers" {
     for_each = var.bootstrap_complete ? [local.global_nameserver] : []
     content {
